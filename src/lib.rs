@@ -1,4 +1,4 @@
-mod sortition;
+pub mod sortition;
 
 #[cfg(test)]
 mod tests {

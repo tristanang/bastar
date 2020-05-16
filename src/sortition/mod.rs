@@ -24,13 +24,13 @@ pub fn check_select(sk: SecretKey, seed: &[u8], threshold: f64, // role: int?
     let hash = vrf.proof_to_hash(&pi).unwrap();
 
     let num = BigUint::from_bytes_be(&hash).to_f64().unwrap();
-    let denom = get_largest(hash.len()).to_f64().unwrap();;
+    let denom = get_largest(hash.len()).to_f64().unwrap();
     let ratio = num / denom;  
     
     for i in 0..money {
         let boundary = dist.cdf(i as f64);
 
-        if (ratio <= boundary) {
+        if ratio <= boundary {
             return i;
         } 
     }
@@ -38,7 +38,7 @@ pub fn check_select(sk: SecretKey, seed: &[u8], threshold: f64, // role: int?
     return money;
 }
 
-pub fn verify_select(money: u64, total_money: u64, threshold: f64) -> u64 {
+pub fn verify_select(pk: PublicKey, money: u64, total_money: u64, threshold: f64) -> u64 {
     let p = threshold / (total_money as f64);
     return 0;
 }
@@ -49,8 +49,15 @@ mod tests {
     use vrf::openssl::{CipherSuite, ECVRF};
     use hex;
     use num_bigint::BigUint;
-    use std::string;
+    use num_bigint::ToBigUint;
     
+    #[test]
+    fn get_largest_test() {
+        for i in 1..8 {
+            assert_eq!(get_largest(i), (2u64.pow(8 * (i as u32))).to_biguint().unwrap());
+        }
+    }
+
     #[test]
     fn playground() {
         let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).expect("VRF should init");
@@ -72,11 +79,5 @@ mod tests {
         println!("Hash: {}", hex::encode(&hash));
         println!("Largest Num: {}", fatty);
         println!("Generated VRF proof: {}", hex::encode(&pi));
-    }
-
-    #[test]
-    fn type_check() {
-        let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).expect("VRF should init");
-        // check_select(1, 1, 0.0, vrf);
     }
 }
