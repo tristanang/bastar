@@ -15,3 +15,4 @@ num-traits = "*"
 
 [dev-dependencies]
 hex = "*"
+uuid = { version = "0.8.1", features = ["v4"] }

@@ -14,18 +14,13 @@ fn get_largest(length: usize) -> BigUint {
     return largest;
 }
 
-pub fn check_select(sk: SecretKey, seed: &[u8], threshold: f64, // role: int?
-                    money: u64, total_money: u64, vrf: &mut ECVRF) -> u64 {
-
+fn lottery(hash: std::vec::Vec<u8>, threshold: f64, money: u64, total_money: u64) -> u64 {
     let p = threshold / (total_money as f64);
     let dist = Binomial::new(p, money).unwrap();
 
-    let pi = vrf.prove(&sk, &seed).unwrap();
-    let hash = vrf.proof_to_hash(&pi).unwrap();
-
     let num = BigUint::from_bytes_be(&hash).to_f64().unwrap();
     let denom = get_largest(hash.len()).to_f64().unwrap();
-    let ratio = num / denom;  
+    let ratio = num / denom;
     
     for i in 0..money {
         let boundary = dist.cdf(i as f64);
@@ -38,9 +33,30 @@ pub fn check_select(sk: SecretKey, seed: &[u8], threshold: f64, // role: int?
     return money;
 }
 
-pub fn verify_select(pk: PublicKey, money: u64, total_money: u64, threshold: f64) -> u64 {
-    let p = threshold / (total_money as f64);
-    return 0;
+pub fn check_select(sk: SecretKey, seed: &[u8], threshold: f64, // TODO: add a role: int parameter
+                    money: u64, total_money: u64, vrf: &mut ECVRF) -> (u64, std::vec::Vec<u8>) {
+
+    let pi = vrf.prove(&sk, &seed).unwrap();
+    let hash = vrf.proof_to_hash(&pi).unwrap();
+    
+    let lottery_num = lottery(hash, threshold, money, total_money);
+
+    return (lottery_num, pi);
+}
+
+pub fn verify_select(pk: PublicKey, pi: std::vec::Vec<u8>, seed: &[u8], vrf: &mut ECVRF) -> u64 {
+
+    let beta = vrf.verify(&pk, &pi, &seed);
+    
+    match beta {
+        Ok(beta) => {
+            return 1;
+        }
+        
+        Err(e) => {
+            return 0;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -48,7 +64,7 @@ mod tests {
     use super::*;
     use vrf::openssl::{CipherSuite, ECVRF};
     use hex;
-    use num_bigint::BigUint;
+    use uuid::Uuid;
     use num_bigint::ToBigUint;
     
     #[test]
@@ -56,6 +72,35 @@ mod tests {
         for i in 1..8 {
             assert_eq!(get_largest(i), (2u64.pow(8 * (i as u32))).to_biguint().unwrap());
         }
+    }
+
+    #[test]
+    fn test_selection_probability() {
+        let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).expect("VRF should init");
+         // change this to random number
+        let total_money: u64 = 1000000;
+        
+        // change this to random number
+        let t_percentage = 0.5;
+        let threshold: f64 = t_percentage * (total_money as f64);
+        
+         // change this to random number
+        let money: u64 = 500000;
+        let m_percentage = (money as f64) / (total_money as f64);
+
+        let secret_key = Uuid::new_v4().as_bytes().clone();
+        let public_key = vrf.derive_public_key(&secret_key).unwrap();
+
+        let seed: &[u8] = b"random_seed";
+        let (practical, pi) = check_select(&secret_key, seed, threshold, money, total_money, &mut vrf);
+        let theory = t_percentage * m_percentage * (total_money as f64);
+
+        // this should be an average
+        println!("{} {}", practical, theory);
+        assert!(((practical as f64)- theory).abs() <= 0.01 * theory);
+
+        // abstract this out
+        assert_eq!(verify_select(&public_key, pi, seed, &mut vrf), 1);
     }
 
     #[test]
@@ -68,7 +113,6 @@ mod tests {
         let seed: &[u8] = b"random_seed";
 
          // VRF proof and hash output
-        println!("i: {}", check_select(&secret_key, seed, 1.0, 1, 1, &mut vrf));
         let pi = vrf.prove(&secret_key, &seed).unwrap();
         let hash = vrf.proof_to_hash(&pi).unwrap();
         let num = BigUint::from_bytes_be(&hash);
